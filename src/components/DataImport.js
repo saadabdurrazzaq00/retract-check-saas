@@ -81,11 +81,11 @@ const DataImport = ({ onFileUpload }) => { // Assuming parent passes 'onFileUplo
     }, 1500); 
   };
 
-  const onDrop = useCallback((acceptedFiles) => {
+const onDrop = (acceptedFiles) => {
     if (acceptedFiles.length > 0) {
       processFile(acceptedFiles[0]);
     }
-  }, []);
+  };
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
