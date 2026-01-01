@@ -3,6 +3,7 @@ import LandingPage from './components/LandingPage';
 import AuthForm from './components/AuthForm';
 import DataImport from './components/DataImport';
 import DataPreview from './components/DataPreview';
+import Footer from './components/Footer'; // <--- Import the Footer component
 import './App.css';
 
 function App() {
@@ -40,35 +41,41 @@ function App() {
 
   return (
     <div className="App">
-      <main className="main-content">
+      <div className="content-wrap"> {/* Wrapper to push footer down */}
         
-        {/* SCREEN 1: LANDING PAGE */}
-        {appState === 'landing' && (
-           <LandingPage onStart={handleStart} />
-        )}
+        <main className="main-content">
+          
+          {/* SCREEN 1: LANDING PAGE */}
+          {appState === 'landing' && (
+             <LandingPage onStart={handleStart} />
+          )}
 
-        {/* SCREEN 2: AUTHENTICATION (Gatekeeper) */}
-        {appState === 'auth' && (
-           <AuthForm 
-             onLoginSuccess={handleLoginSuccess} 
-             onBack={handleBackToLanding} 
-           />
-        )}
+          {/* SCREEN 2: AUTHENTICATION (Gatekeeper) */}
+          {appState === 'auth' && (
+             <AuthForm 
+               onLoginSuccess={handleLoginSuccess} 
+               onBack={handleBackToLanding} 
+             />
+          )}
 
-        {/* SCREEN 3: DATA IMPORT (Upload) */}
-        {appState === 'upload' && (
-           <DataImport onFileUpload={handleFileUpload} />
-        )}
+          {/* SCREEN 3: DATA IMPORT (Upload) */}
+          {appState === 'upload' && (
+             <DataImport onFileUpload={handleFileUpload} />
+          )}
 
-        {/* SCREEN 4: PREVIEW & RESULTS DASHBOARD */}
-        {appState === 'preview' && (
-           <DataPreview 
-             data={parsedData} 
-             onBack={handleBackToUpload} 
-           />
-        )}
+          {/* SCREEN 4: PREVIEW & RESULTS DASHBOARD */}
+          {appState === 'preview' && (
+             <DataPreview 
+               data={parsedData} 
+               onBack={handleBackToUpload} 
+             />
+          )}
 
-      </main>
+        </main>
+      </div>
+
+      {/* GLOBAL FOOTER - Appears on all pages */}
+      <Footer />
     </div>
   );
 }
