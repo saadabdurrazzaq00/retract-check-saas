@@ -12,21 +12,16 @@ const DataPreview = ({ data, onBack }) => {
   const [progress, setProgress] = useState(0);
   const [processedData, setProcessedData] = useState(null);
 
-  // --- 1. MEMOIZED INPUT STATS (Initial View) ---
+  // --- 1. MEMOIZED INPUT STATS ---
   const inputStats = useMemo(() => {
     if (!data || data.length === 0) return {};
     
-    // Safety check: Filter out completely empty rows immediately
     const validData = data.filter(row => row && row.length > 0);
     if (validData.length === 0) return {};
 
     const headers = validData[0];
     const rows = validData.slice(1);
-    const totalRows = rows.length;
-    const totalCols = headers.length;
-
-    // --- FIX: SAFE INDEX FINDER ---
-    // We check (h && ...) to ensure the header isn't null/undefined before checking text
+    
     const getIndex = (name) => headers.findIndex(h => h && h.toString().toUpperCase().trim() === name);
     
     const pyIndex = getIndex('PY');
@@ -34,12 +29,10 @@ const DataPreview = ({ data, onBack }) => {
     const auIndex = getIndex('AU');
     const titleIndex = getIndex('TITLE');
 
-    // 1. Peak Year
     let peakYear = "N/A";
     if (pyIndex !== -1) {
       const yearCounts = {};
       rows.forEach(r => {
-        // Safe parse
         if (r[pyIndex]) {
             const y = parseInt(r[pyIndex]);
             if (!isNaN(y) && y > 1900 && y < 2100) yearCounts[y] = (yearCounts[y] || 0) + 1;
@@ -50,27 +43,25 @@ const DataPreview = ({ data, onBack }) => {
       }
     }
 
-    // 2. DOI Coverage
     let doiCount = 0;
     if (doiIndex !== -1) {
         doiCount = rows.filter(r => r[doiIndex] && r[doiIndex].toString().trim().length > 5).length;
     }
+    const totalRows = rows.length;
     const doiCoverage = totalRows > 0 ? Math.round((doiCount / totalRows) * 100) + '%' : '0%';
 
-    // 3. Unique Authors
     let uniqueAuthors = 0;
     if (auIndex !== -1) {
       uniqueAuthors = new Set(rows.map(r => r[auIndex]).filter(Boolean)).size;
     }
 
-    // 4. Duplicate Titles
     let duplicateTitles = 0;
     if (titleIndex !== -1) {
       const titles = rows.map(r => r[titleIndex] ? r[titleIndex].toString().toLowerCase().trim() : "");
       duplicateTitles = titles.length - new Set(titles).size;
     }
 
-    return { totalRows, totalCols, doiCoverage, peakYear, uniqueAuthors, duplicateTitles, headers, rows };
+    return { totalRows, totalCols: headers.length, doiCoverage, peakYear, uniqueAuthors, duplicateTitles, headers, rows };
   }, [data]);
 
   // --- 2. AUTOMATION LOGIC ---
@@ -83,7 +74,6 @@ const DataPreview = ({ data, onBack }) => {
       if (!response.ok) throw new Error("Database file missing");
       const csvText = await response.text();
 
-      // Fake progress
       const progressInterval = setInterval(() => {
         setProgress(old => (old > 90 ? old : old + Math.floor(Math.random() * 10)));
       }, 200);
@@ -104,20 +94,23 @@ const DataPreview = ({ data, onBack }) => {
             }
           });
 
-          // Map Input to Output
-          // Safe map: Ensure h exists before calling toUpperCase
+          // Helper to get input values
           const inputHeaders = data[0].map(h => h ? h.toString().toUpperCase().trim() : "");
-          
           const getVal = (row, colName) => {
             const index = inputHeaders.indexOf(colName);
             return index !== -1 && row[index] !== undefined ? row[index] : "";
           };
 
+          // --- MODIFIED OUTPUT HEADERS ---
           const outputHeaders = [
-            "UT", "TITLE", "DOI", "AU", "PY", 
+            "UT", "TITLE", "InputDOI", "AU", "PY", 
             "RetractionStatus", 
             "Subject", "Institution", "Journal", "Publisher", "Country", "Author", 
-            "URLS", "ArticleType", "Date", "PubMedID", "Reason", "Paywalled"
+            "URLS", "ArticleType", 
+            "OriginalPaperDate", "RetractionDate",       // Added Dates
+            "OriginalPaperDOI", "RetractionDOI",         // Added DOIs
+            "OriginalPaperPubMedID", "RetractionPubMedID", // Added PubMed IDs
+            "Reason", "Paywalled", "Notes"
           ];
 
           const outputRows = data.slice(1).map(row => {
@@ -126,7 +119,15 @@ const DataPreview = ({ data, onBack }) => {
             const match = retractionMap.get(cleanDoi);
 
             let status = "No Retractions found matching selected criteria";
-            let m = { Subject: "", Institution: "", Journal: "", Publisher: "", Country: "", Author: "", URLS: "", ArticleType: "", Date: "", PubMedID: "", Reason: "", Paywalled: "" };
+            // Default object with all new fields empty
+            let m = { 
+                Subject: "", Institution: "", Journal: "", Publisher: "", Country: "", 
+                Author: "", URLS: "", ArticleType: "", 
+                OriginalPaperDate: "", RetractionDate: "", 
+                OriginalPaperDOI: "", RetractionDOI: "", 
+                OriginalPaperPubMedID: "", RetractionPubMedID: "",
+                Reason: "", Paywalled: "", Notes: "" 
+            };
 
             if (match) {
               const retDOI = match.RetractionDOI ? match.RetractionDOI.trim().toLowerCase() : "";
@@ -134,46 +135,79 @@ const DataPreview = ({ data, onBack }) => {
 
               if (retDOI !== origDOI) {
                  status = "Retractions found matching selected criteria";
+                 
+                 // Populate ALL fields from the match
                  m = {
-                    Subject: match.Subject || "", Institution: match.Institution || "",
-                    Journal: match.Journal || "", Publisher: match.Publisher || "",
-                    Country: match.Country || "", Author: match.Author || "",
-                    URLS: match.URLS || "", ArticleType: match.ArticleType || "",
-                    Date: match.OriginalPaperDate || "", PubMedID: match.OriginalPaperPubMedID || "",
-                    Reason: match.Reason || "", Paywalled: match.Paywalled || ""
+                    Subject: match.Subject || "", 
+                    Institution: match.Institution || "",
+                    Journal: match.Journal || "", 
+                    Publisher: match.Publisher || "",
+                    Country: match.Country || "", 
+                    Author: match.Author || "",
+                    URLS: match.URLS || "", 
+                    ArticleType: match.ArticleType || "",
+                    
+                    // New Fields Mapped Directly from CSV Columns
+                    OriginalPaperDate: match.OriginalPaperDate || "",
+                    RetractionDate: match.RetractionDate || "",
+                    OriginalPaperDOI: match.OriginalPaperDOI || "",
+                    RetractionDOI: match.RetractionDOI || "",
+                    OriginalPaperPubMedID: match.OriginalPaperPubMedID || "",
+                    RetractionPubMedID: match.RetractionPubMedID || "",
+                    
+                    Reason: match.Reason || "", 
+                    Paywalled: match.Paywalled || "",
+                    Notes: match.Notes || ""
                  };
               }
             }
 
+            // Return array matching outputHeaders order
             return [
-              getVal(row, "UT"), getVal(row, "TITLE"), rawDoi, 
-              getVal(row, "AU"), getVal(row, "PY"), status,
-              m.Subject, m.Institution, m.Journal, m.Publisher, m.Country, 
-              m.Author, m.URLS, m.ArticleType, m.Date, m.PubMedID, m.Reason, m.Paywalled
+              getVal(row, "UT"), 
+              getVal(row, "TITLE"), 
+              rawDoi, 
+              getVal(row, "AU"), 
+              getVal(row, "PY"), 
+              status,
+              m.Subject, 
+              m.Institution, 
+              m.Journal, 
+              m.Publisher, 
+              m.Country, 
+              m.Author, 
+              m.URLS, 
+              m.ArticleType,
+              m.OriginalPaperDate, 
+              m.RetractionDate,
+              m.OriginalPaperDOI, 
+              m.RetractionDOI,
+              m.OriginalPaperPubMedID, 
+              m.RetractionPubMedID,
+              m.Reason, 
+              m.Paywalled,
+              m.Notes
             ];
           });
 
-          // --- CALCULATE RESULT STATS ---
+          // --- STATS CALCULATION ---
           const foundCount = outputRows.filter(r => r[5] && r[5].startsWith("Retractions")).length;
           
-          // Re-use logic for stats
-          const pyIdx = 4;
-          const auIdx = 3;
-          const titleIdx = 1;
-          
+          // Re-calculate stats based on output rows
+          // Indices: PY=4, AU=3, TITLE=1 (Based on outputHeaders)
           let peakYear = "N/A";
           const yearCounts = {};
           outputRows.forEach(r => {
-             if (r[pyIdx]) {
-                const y = parseInt(r[pyIdx]);
+             if (r[4]) {
+                const y = parseInt(r[4]);
                 if(!isNaN(y)) yearCounts[y] = (yearCounts[y] || 0) + 1;
              }
           });
           if(Object.keys(yearCounts).length > 0) peakYear = Object.keys(yearCounts).reduce((a,b)=>yearCounts[a]>yearCounts[b]?a:b);
 
-          const uniqueAuthors = new Set(outputRows.map(r => r[auIdx]).filter(Boolean)).size;
+          const uniqueAuthors = new Set(outputRows.map(r => r[3]).filter(Boolean)).size;
           
-          const titles = outputRows.map(r => r[titleIdx] ? r[titleIdx].toString().toLowerCase().trim() : "");
+          const titles = outputRows.map(r => r[1] ? r[1].toString().toLowerCase().trim() : "");
           const duplicateTitles = titles.length - new Set(titles).size;
 
           setProcessedData({
@@ -212,7 +246,7 @@ const DataPreview = ({ data, onBack }) => {
     document.body.removeChild(link);
   };
 
-  // --- PROCESSING VIEW ---
+  // --- RENDER VIEWS ---
   if (viewState === 'processing') {
     return (
       <div className="processing-container">
@@ -229,7 +263,6 @@ const DataPreview = ({ data, onBack }) => {
     );
   }
 
-  // --- RESULTS VIEW ---
   if (viewState === 'results') {
     return (
       <div className="results-container">
@@ -244,14 +277,12 @@ const DataPreview = ({ data, onBack }) => {
            </div>
         </div>
 
-        {/* RESULTS STATS GRID */}
         <div className="results-stats-grid">
            <div className="stat-card group">
               <div className="icon-box blue"><FileText size={20} /></div>
               <div><h3>{processedData.totalRows}</h3><p>Total Checked</p></div>
               <div className="tooltip">Total number of papers processed.</div>
            </div>
-
            <div className={`stat-card group ${processedData.foundCount > 0 ? 'alert-card' : 'clean-card'}`}>
               <div className={`icon-box ${processedData.foundCount > 0 ? 'red' : 'green'}`}>
                 <ShieldAlert size={20} />
@@ -264,19 +295,16 @@ const DataPreview = ({ data, onBack }) => {
               </div>
               <div className="tooltip">Papers flagged as retracted.</div>
            </div>
-
            <div className="stat-card group">
               <div className="icon-box orange"><TrendingUp size={20} /></div>
               <div><h3>{processedData.peakYear}</h3><p>Peak Year</p></div>
               <div className="tooltip">Hottest year for research.</div>
            </div>
-
            <div className="stat-card group">
               <div className="icon-box indigo"><Users size={20} /></div>
               <div><h3>{processedData.uniqueAuthors}</h3><p>Unique Authors</p></div>
               <div className="tooltip">Distinct number of researchers.</div>
            </div>
-
            <div className="stat-card group">
               <div className="icon-box purple"><Copy size={20} /></div>
               <div><h3>{processedData.duplicateTitles}</h3><p>Duplicates</p></div>
@@ -304,7 +332,7 @@ const DataPreview = ({ data, onBack }) => {
     );
   }
 
-  // --- INPUT PREVIEW (Default) ---
+  // Input Preview (Default)
   return (
     <div className="preview-container fade-in">
       <div className="preview-header">
