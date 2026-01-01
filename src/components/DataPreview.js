@@ -12,7 +12,7 @@ const DataPreview = ({ data, onBack }) => {
   const [progress, setProgress] = useState(0);
   const [processedData, setProcessedData] = useState(null);
 
-  // --- 1. MEMOIZED INPUT STATS (Initial View) ---
+  // --- 1. MEMOIZED INPUT STATS ---
   const inputStats = useMemo(() => {
     if (!data || data.length === 0) return {};
     
@@ -24,7 +24,7 @@ const DataPreview = ({ data, onBack }) => {
     
     const getIndex = (name) => headers.findIndex(h => h && h.toString().toUpperCase().trim() === name);
     
-    // Stats Logic (Still useful for Input Preview, even if removed from Output)
+    // Stats Logic
     const pyIndex = getIndex('PY');
     const doiIndex = getIndex('DOI');
     const auIndex = getIndex('AU');
@@ -65,7 +65,7 @@ const DataPreview = ({ data, onBack }) => {
     return { totalRows, totalCols: headers.length, doiCoverage, peakYear, uniqueAuthors, duplicateTitles, headers, rows };
   }, [data]);
 
-  // --- 2. AUTOMATION LOGIC ---
+  // --- 2. AUTOMATION LOGIC (WITH FALLBACK SYSTEM) ---
   const handleStart = async () => {
     setViewState('processing');
     setProgress(0);
@@ -87,11 +87,25 @@ const DataPreview = ({ data, onBack }) => {
           setProgress(100);
 
           const referenceData = results.data;
-          const retractionMap = new Map();
+          
+          // --- BUILD 3 INDEXES FOR FAST LOOKUP ---
+          const doiMap = new Map();
+          const pmidMap = new Map();
+          const titleMap = new Map();
           
           referenceData.forEach(item => {
+            // 1. DOI Index (Primary)
             if (item.OriginalPaperDOI) {
-              retractionMap.set(item.OriginalPaperDOI.trim().toLowerCase(), item);
+              doiMap.set(item.OriginalPaperDOI.trim().toLowerCase(), item);
+            }
+            // 2. PubMedID Index (Secondary)
+            if (item.OriginalPaperPubMedID) {
+              // Ensure strictly string comparison just in case
+              pmidMap.set(item.OriginalPaperPubMedID.toString().trim(), item);
+            }
+            // 3. Title Index (Tertiary - Fallback)
+            if (item.Title) {
+              titleMap.set(item.Title.trim().toLowerCase(), item);
             }
           });
 
@@ -105,11 +119,9 @@ const DataPreview = ({ data, onBack }) => {
           // Helper: Clean Date Function
           const cleanDate = (dateStr) => {
             if (!dateStr) return "";
-            // Split by space to remove time (e.g. "4/1/2010 0:00" -> "4/1/2010")
             return dateStr.split(' ')[0]; 
           };
 
-          // --- FINAL OUTPUT STRUCTURE (Removed UT, AU, PY) ---
           const outputHeaders = [
             "TITLE", "InputDOI", 
             "RetractionStatus", 
@@ -122,13 +134,31 @@ const DataPreview = ({ data, onBack }) => {
           ];
 
           const outputRows = data.slice(1).map(row => {
+            // Grab Input Values
             const rawDoi = getVal(row, "DOI");
-            const cleanDoi = rawDoi ? rawDoi.toString().trim().toLowerCase() : "";
-            const match = retractionMap.get(cleanDoi);
+            const rawPmid = getVal(row, "PUBMEDID");
+            const rawTitle = getVal(row, "TITLE");
 
-            let status = "No Retractions found matching selected criteria";
+            // Normalize Inputs
+            const cleanDoi = rawDoi ? rawDoi.toString().trim().toLowerCase() : "";
+            const cleanPmid = rawPmid ? rawPmid.toString().trim() : "";
+            const cleanTitle = rawTitle ? rawTitle.toString().trim().toLowerCase() : "";
+
+            // --- THE FALLBACK MATCHING LOGIC ---
+            let match = null;
+
+            // Step 1: Try DOI
+            if (cleanDoi) match = doiMap.get(cleanDoi);
             
-            // Empty Default State
+            // Step 2: If no match, Try PubMedID
+            if (!match && cleanPmid) match = pmidMap.get(cleanPmid);
+
+            // Step 3: If no match, Try Title
+            if (!match && cleanTitle) match = titleMap.get(cleanTitle);
+
+
+            // --- Construct Output ---
+            let status = "No Retractions found matching selected criteria";
             let m = { 
                 Subject: "", Institution: "", Journal: "", Publisher: "", Country: "", 
                 Author: "", URLS: "", ArticleType: "", 
@@ -139,6 +169,7 @@ const DataPreview = ({ data, onBack }) => {
             };
 
             if (match) {
+              // Safety Check: Retraction != Original
               const retDOI = match.RetractionDOI ? match.RetractionDOI.trim().toLowerCase() : "";
               const origDOI = match.OriginalPaperDOI ? match.OriginalPaperDOI.trim().toLowerCase() : "";
 
@@ -154,16 +185,12 @@ const DataPreview = ({ data, onBack }) => {
                     Author: match.Author || "",
                     URLS: match.URLS || "", 
                     ArticleType: match.ArticleType || "",
-                    
-                    // CLEAN DATES HERE
                     OriginalPaperDate: cleanDate(match.OriginalPaperDate),
                     RetractionDate: cleanDate(match.RetractionDate),
-                    
                     OriginalPaperDOI: match.OriginalPaperDOI || "",
                     RetractionDOI: match.RetractionDOI || "",
                     OriginalPaperPubMedID: match.OriginalPaperPubMedID || "",
                     RetractionPubMedID: match.RetractionPubMedID || "",
-                    
                     Reason: match.Reason || "", 
                     Paywalled: match.Paywalled || "",
                     Notes: match.Notes || ""
@@ -172,7 +199,7 @@ const DataPreview = ({ data, onBack }) => {
             }
 
             return [
-              getVal(row, "TITLE"), 
+              rawTitle, // Return raw input title for reference
               rawDoi, 
               status,
               m.Subject, m.Institution, m.Journal, m.Publisher, m.Country, 
@@ -185,8 +212,7 @@ const DataPreview = ({ data, onBack }) => {
           });
 
           // --- STATS CALCULATION ---
-          // Adjusted index for title since UT is gone (Title is now index 0)
-          const foundCount = outputRows.filter(r => r[2] && r[2].startsWith("Retractions")).length;
+          const foundCount = outputRows.filter(r => r[2] && r[2].startsWith("Retractions found")).length;
           
           const titles = outputRows.map(r => r[0] ? r[0].toString().toLowerCase().trim() : "");
           const duplicateTitles = titles.length - new Set(titles).size;
@@ -225,7 +251,7 @@ const DataPreview = ({ data, onBack }) => {
     document.body.removeChild(link);
   };
 
-  // --- PROCESSING VIEW ---
+  // --- RENDER: PROCESSING VIEW ---
   if (viewState === 'processing') {
     return (
       <div className="processing-container">
@@ -237,12 +263,12 @@ const DataPreview = ({ data, onBack }) => {
         <div className="progress-bar-wrapper">
             <div className="progress-bar-fill" style={{ width: `${progress}%` }}></div>
         </div>
-        <p className="processing-status">Checking papers against Retraction Watch...</p>
+        <p className="processing-status">Checking papers (DOI → PMID → Title)...</p>
       </div>
     );
   }
 
-  // --- RESULTS VIEW (Updated Stats Grid) ---
+  // --- RENDER: RESULTS VIEW ---
   if (viewState === 'results') {
     return (
       <div className="results-container">
@@ -257,7 +283,7 @@ const DataPreview = ({ data, onBack }) => {
            </div>
         </div>
 
-        {/* RESULTS STATS GRID (Removed Peak Year & Authors) */}
+        {/* RESULTS STATS GRID */}
         <div className="results-stats-grid">
            <div className="stat-card group">
               <div className="icon-box blue"><FileText size={20} /></div>
@@ -305,7 +331,7 @@ const DataPreview = ({ data, onBack }) => {
     );
   }
 
-  // --- INPUT PREVIEW (Unchanged) ---
+  // --- RENDER: INPUT PREVIEW ---
   return (
     <div className="preview-container fade-in">
       <div className="preview-header">
