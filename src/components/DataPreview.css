@@ -356,3 +356,69 @@
   background: #f0fdf4;
   border: 1px solid #bbf7d0;
 }
+
+/* --- LEGEND SECTION STYLES --- */
+.legend-container {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 25px;
+}
+
+.legend-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 15px;
+  color: #334155;
+}
+
+.legend-title h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.legend-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 20px;
+}
+
+.legend-item p {
+  margin: 8px 0 0 0;
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.5;
+}
+
+.legend-item strong {
+  color: #1e293b;
+}
+
+/* Badge Styles reused for Legend */
+.badge {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.badge-red { background: #fee2e2; color: #dc2626; }
+.badge-orange { background: #ffedd5; color: #ea580c; }
+.badge-blue { background: #dbeafe; color: #2563eb; }
+
+.metric-label {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #475569;
+  background: #e2e8f0;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
