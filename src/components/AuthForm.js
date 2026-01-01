@@ -1,17 +1,10 @@
 import React, { useState } from 'react';
-import { ShieldCheck, Lock, User, ArrowRight, AlertCircle } from 'lucide-react';
+import { KeyRound, ArrowRight, AlertCircle, Lock } from 'lucide-react';
 import './AuthForm.css';
-
-// --- CONFIGURATION ---
-// You can add more users here if needed
-const VALID_USERS = [
-  { username: "admin", password: "password123" }, // CHANGE THIS!
-  { username: "demo", password: "demo" }
-];
+import validCodes from '../creds.json'; // Imports the array of codes
 
 const AuthForm = ({ onLoginSuccess, onBack }) => {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  const [accessCode, setAccessCode] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -20,16 +13,16 @@ const AuthForm = ({ onLoginSuccess, onBack }) => {
     setError('');
     setIsLoading(true);
 
-    // Simulate network delay for realism (optional)
+    // Simulate network delay for a professional feel
     setTimeout(() => {
-      const isValid = VALID_USERS.find(
-        u => u.username === username && u.password === password
-      );
+      // Check if the entered code exists in our JSON list
+      // .trim() removes accidental spaces at the start/end
+      const isValid = validCodes.includes(accessCode.trim());
 
       if (isValid) {
         onLoginSuccess();
       } else {
-        setError("Invalid credentials. Access denied.");
+        setError("Invalid invitation code.");
         setIsLoading(false);
       }
     }, 800);
@@ -40,32 +33,22 @@ const AuthForm = ({ onLoginSuccess, onBack }) => {
       <div className="auth-card">
         <div className="auth-header">
            <div className="icon-circle-auth">
-              <ShieldCheck size={32} />
+              <KeyRound size={32} />
            </div>
-           <h2>Restricted Access</h2>
-           <p>Enter authorized credentials to access the Audit Engine.</p>
+           <h2>Enter Access Code</h2>
+           <p>This tool is currently private. Please enter your invitation code to proceed.</p>
         </div>
 
         <form onSubmit={handleLogin}>
            <div className="input-group">
-              <label><User size={14}/> Username</label>
+              <label><Lock size={14}/> Invitation Code</label>
               <input 
                 type="text" 
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="Enter username" 
+                value={accessCode}
+                onChange={(e) => setAccessCode(e.target.value)}
+                placeholder="Enter Access Code Here" 
                 required 
-              />
-           </div>
-
-           <div className="input-group">
-              <label><Lock size={14}/> Password</label>
-              <input 
-                type="password" 
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••" 
-                required 
+                autoFocus
               />
            </div>
 
@@ -76,7 +59,7 @@ const AuthForm = ({ onLoginSuccess, onBack }) => {
            )}
 
            <button type="submit" className="login-btn" disabled={isLoading}>
-             {isLoading ? "Verifying..." : <>Access Dashboard <ArrowRight size={16}/></>}
+             {isLoading ? "Verifying..." : <>Unlock Dashboard <ArrowRight size={16}/></>}
            </button>
         </form>
 
