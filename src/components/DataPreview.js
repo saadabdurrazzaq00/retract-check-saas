@@ -12,7 +12,7 @@ const DataPreview = ({ data, onBack }) => {
   const [progress, setProgress] = useState(0);
   const [processedData, setProcessedData] = useState(null);
 
-  // --- 1. MEMOIZED INPUT STATS ---
+  // --- 1. MEMOIZED INPUT STATS (Initial View) ---
   const inputStats = useMemo(() => {
     if (!data || data.length === 0) return {};
     
@@ -24,6 +24,7 @@ const DataPreview = ({ data, onBack }) => {
     
     const getIndex = (name) => headers.findIndex(h => h && h.toString().toUpperCase().trim() === name);
     
+    // Stats Logic (Still useful for Input Preview, even if removed from Output)
     const pyIndex = getIndex('PY');
     const doiIndex = getIndex('DOI');
     const auIndex = getIndex('AU');
@@ -94,22 +95,29 @@ const DataPreview = ({ data, onBack }) => {
             }
           });
 
-          // Helper to get input values
+          // Input Helpers
           const inputHeaders = data[0].map(h => h ? h.toString().toUpperCase().trim() : "");
           const getVal = (row, colName) => {
             const index = inputHeaders.indexOf(colName);
             return index !== -1 && row[index] !== undefined ? row[index] : "";
           };
 
-          // --- MODIFIED OUTPUT HEADERS ---
+          // Helper: Clean Date Function
+          const cleanDate = (dateStr) => {
+            if (!dateStr) return "";
+            // Split by space to remove time (e.g. "4/1/2010 0:00" -> "4/1/2010")
+            return dateStr.split(' ')[0]; 
+          };
+
+          // --- FINAL OUTPUT STRUCTURE (Removed UT, AU, PY) ---
           const outputHeaders = [
-            "UT", "TITLE", "InputDOI", "AU", "PY", 
+            "TITLE", "InputDOI", 
             "RetractionStatus", 
             "Subject", "Institution", "Journal", "Publisher", "Country", "Author", 
             "URLS", "ArticleType", 
-            "OriginalPaperDate", "RetractionDate",       // Added Dates
-            "OriginalPaperDOI", "RetractionDOI",         // Added DOIs
-            "OriginalPaperPubMedID", "RetractionPubMedID", // Added PubMed IDs
+            "OriginalPaperDate", "RetractionDate", 
+            "OriginalPaperDOI", "RetractionDOI", 
+            "OriginalPaperPubMedID", "RetractionPubMedID", 
             "Reason", "Paywalled", "Notes"
           ];
 
@@ -119,7 +127,8 @@ const DataPreview = ({ data, onBack }) => {
             const match = retractionMap.get(cleanDoi);
 
             let status = "No Retractions found matching selected criteria";
-            // Default object with all new fields empty
+            
+            // Empty Default State
             let m = { 
                 Subject: "", Institution: "", Journal: "", Publisher: "", Country: "", 
                 Author: "", URLS: "", ArticleType: "", 
@@ -136,7 +145,6 @@ const DataPreview = ({ data, onBack }) => {
               if (retDOI !== origDOI) {
                  status = "Retractions found matching selected criteria";
                  
-                 // Populate ALL fields from the match
                  m = {
                     Subject: match.Subject || "", 
                     Institution: match.Institution || "",
@@ -147,9 +155,10 @@ const DataPreview = ({ data, onBack }) => {
                     URLS: match.URLS || "", 
                     ArticleType: match.ArticleType || "",
                     
-                    // New Fields Mapped Directly from CSV Columns
-                    OriginalPaperDate: match.OriginalPaperDate || "",
-                    RetractionDate: match.RetractionDate || "",
+                    // CLEAN DATES HERE
+                    OriginalPaperDate: cleanDate(match.OriginalPaperDate),
+                    RetractionDate: cleanDate(match.RetractionDate),
+                    
                     OriginalPaperDOI: match.OriginalPaperDOI || "",
                     RetractionDOI: match.RetractionDOI || "",
                     OriginalPaperPubMedID: match.OriginalPaperPubMedID || "",
@@ -162,52 +171,24 @@ const DataPreview = ({ data, onBack }) => {
               }
             }
 
-            // Return array matching outputHeaders order
             return [
-              getVal(row, "UT"), 
               getVal(row, "TITLE"), 
               rawDoi, 
-              getVal(row, "AU"), 
-              getVal(row, "PY"), 
               status,
-              m.Subject, 
-              m.Institution, 
-              m.Journal, 
-              m.Publisher, 
-              m.Country, 
-              m.Author, 
-              m.URLS, 
-              m.ArticleType,
-              m.OriginalPaperDate, 
-              m.RetractionDate,
-              m.OriginalPaperDOI, 
-              m.RetractionDOI,
-              m.OriginalPaperPubMedID, 
-              m.RetractionPubMedID,
-              m.Reason, 
-              m.Paywalled,
-              m.Notes
+              m.Subject, m.Institution, m.Journal, m.Publisher, m.Country, 
+              m.Author, m.URLS, m.ArticleType,
+              m.OriginalPaperDate, m.RetractionDate,
+              m.OriginalPaperDOI, m.RetractionDOI,
+              m.OriginalPaperPubMedID, m.RetractionPubMedID,
+              m.Reason, m.Paywalled, m.Notes
             ];
           });
 
           // --- STATS CALCULATION ---
-          const foundCount = outputRows.filter(r => r[5] && r[5].startsWith("Retractions")).length;
+          // Adjusted index for title since UT is gone (Title is now index 0)
+          const foundCount = outputRows.filter(r => r[2] && r[2].startsWith("Retractions")).length;
           
-          // Re-calculate stats based on output rows
-          // Indices: PY=4, AU=3, TITLE=1 (Based on outputHeaders)
-          let peakYear = "N/A";
-          const yearCounts = {};
-          outputRows.forEach(r => {
-             if (r[4]) {
-                const y = parseInt(r[4]);
-                if(!isNaN(y)) yearCounts[y] = (yearCounts[y] || 0) + 1;
-             }
-          });
-          if(Object.keys(yearCounts).length > 0) peakYear = Object.keys(yearCounts).reduce((a,b)=>yearCounts[a]>yearCounts[b]?a:b);
-
-          const uniqueAuthors = new Set(outputRows.map(r => r[3]).filter(Boolean)).size;
-          
-          const titles = outputRows.map(r => r[1] ? r[1].toString().toLowerCase().trim() : "");
+          const titles = outputRows.map(r => r[0] ? r[0].toString().toLowerCase().trim() : "");
           const duplicateTitles = titles.length - new Set(titles).size;
 
           setProcessedData({
@@ -215,8 +196,6 @@ const DataPreview = ({ data, onBack }) => {
             rows: outputRows,
             foundCount,
             totalRows: outputRows.length,
-            peakYear,
-            uniqueAuthors,
             duplicateTitles
           });
 
@@ -246,7 +225,7 @@ const DataPreview = ({ data, onBack }) => {
     document.body.removeChild(link);
   };
 
-  // --- RENDER VIEWS ---
+  // --- PROCESSING VIEW ---
   if (viewState === 'processing') {
     return (
       <div className="processing-container">
@@ -263,6 +242,7 @@ const DataPreview = ({ data, onBack }) => {
     );
   }
 
+  // --- RESULTS VIEW (Updated Stats Grid) ---
   if (viewState === 'results') {
     return (
       <div className="results-container">
@@ -277,12 +257,14 @@ const DataPreview = ({ data, onBack }) => {
            </div>
         </div>
 
+        {/* RESULTS STATS GRID (Removed Peak Year & Authors) */}
         <div className="results-stats-grid">
            <div className="stat-card group">
               <div className="icon-box blue"><FileText size={20} /></div>
               <div><h3>{processedData.totalRows}</h3><p>Total Checked</p></div>
               <div className="tooltip">Total number of papers processed.</div>
            </div>
+           
            <div className={`stat-card group ${processedData.foundCount > 0 ? 'alert-card' : 'clean-card'}`}>
               <div className={`icon-box ${processedData.foundCount > 0 ? 'red' : 'green'}`}>
                 <ShieldAlert size={20} />
@@ -295,16 +277,7 @@ const DataPreview = ({ data, onBack }) => {
               </div>
               <div className="tooltip">Papers flagged as retracted.</div>
            </div>
-           <div className="stat-card group">
-              <div className="icon-box orange"><TrendingUp size={20} /></div>
-              <div><h3>{processedData.peakYear}</h3><p>Peak Year</p></div>
-              <div className="tooltip">Hottest year for research.</div>
-           </div>
-           <div className="stat-card group">
-              <div className="icon-box indigo"><Users size={20} /></div>
-              <div><h3>{processedData.uniqueAuthors}</h3><p>Unique Authors</p></div>
-              <div className="tooltip">Distinct number of researchers.</div>
-           </div>
+
            <div className="stat-card group">
               <div className="icon-box purple"><Copy size={20} /></div>
               <div><h3>{processedData.duplicateTitles}</h3><p>Duplicates</p></div>
@@ -317,7 +290,7 @@ const DataPreview = ({ data, onBack }) => {
               <thead><tr>{processedData.headers.map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
               <tbody>
                  {processedData.rows.slice(0, 100).map((row, rIdx) => {
-                    const isRetracted = row[5] && row[5].startsWith("Retractions found");
+                    const isRetracted = row[2] && row[2].startsWith("Retractions found");
                     return (
                         <tr key={rIdx} className={isRetracted ? "retracted-row" : "clean-row"} style={{animationDelay: `${rIdx * 0.03}s`}}>
                             {row.map((cell, cIdx) => <td key={cIdx}>{cell}</td>)}
@@ -332,7 +305,7 @@ const DataPreview = ({ data, onBack }) => {
     );
   }
 
-  // Input Preview (Default)
+  // --- INPUT PREVIEW (Unchanged) ---
   return (
     <div className="preview-container fade-in">
       <div className="preview-header">
