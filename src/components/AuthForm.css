@@ -4,6 +4,12 @@
   align-items: center;
   min-height: 80vh;
   background: #f9fafb;
+  animation: fadeIn 0.4s ease forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .auth-card {
@@ -28,7 +34,7 @@
 }
 
 .auth-header h2 { font-size: 24px; color: #111827; margin: 0 0 8px 0; }
-.auth-header p { font-size: 14px; color: #6b7280; margin: 0; }
+.auth-header p { font-size: 14px; color: #6b7280; margin: 0; line-height: 1.5; }
 
 .input-group { text-align: left; margin-bottom: 20px; }
 .input-group label {
@@ -38,9 +44,17 @@
 
 .input-group input {
   width: 100%; padding: 12px; border: 1px solid #d1d5db;
-  border-radius: 8px; font-size: 16px; transition: all 0.2s;
-  box-sizing: border-box; /* Important for padding */
+  border-radius: 8px; font-size: 18px; transition: all 0.2s;
+  box-sizing: border-box;
+  
+  /* Code-specific styling */
+  text-align: center;
+  letter-spacing: 1.5px;
+  font-family: monospace;
+  font-weight: 600;
+  text-transform: uppercase; /* Automatically makes text look like a code */
 }
+
 .input-group input:focus {
   border-color: #4f46e5; outline: none; box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
 }
