@@ -1,0 +1,107 @@
+/* Dark Theme Footer */
+.app-footer {
+  background-color: #0f172a; /* Slate 900 - Very Dark Blue */
+  color: #94a3b8; /* Slate 400 - Light Grey Text */
+  padding: 20px 0;
+  border-top: 1px solid #1e293b;
+  margin-top: auto; /* Pushes footer to bottom if page is short */
+  width: 100%;
+}
+
+.footer-content {
+  max-width: 1000px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 20px;
+  margin-bottom: 15px;
+}
+
+/* Profile Section */
+.footer-profile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.dev-photo {
+  width: 45px;
+  height: 45px;
+  border-radius: 50%;
+  border: 2px solid #4f46e5; /* Indigo border */
+  object-fit: cover;
+}
+
+.dev-info h4 {
+  margin: 0;
+  font-size: 15px;
+  color: #f8fafc; /* Almost White */
+  font-weight: 600;
+}
+
+.dev-role {
+  font-size: 11px;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Links Section */
+.footer-links {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.footer-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #94a3b8;
+  text-decoration: none;
+  font-size: 13px;
+  transition: color 0.2s ease;
+}
+
+.footer-link:hover {
+  color: #4f46e5; /* Indigo Highlight */
+}
+
+.divider {
+  color: #334155;
+  font-size: 12px;
+}
+
+/* Copyright Bottom */
+.footer-copyright {
+  text-align: center;
+  font-size: 11px;
+  color: #475569;
+  border-top: 1px solid #1e293b;
+  padding-top: 15px;
+  margin-top: 10px;
+}
+
+/* Responsive: Stack on mobile */
+@media (max-width: 600px) {
+  .footer-content {
+    flex-direction: column;
+    gap: 15px;
+    text-align: center;
+  }
+  
+  .footer-profile {
+    flex-direction: column;
+  }
+  
+  .footer-links {
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .divider { display: none; }
+}
