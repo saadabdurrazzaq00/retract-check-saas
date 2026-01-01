@@ -5,26 +5,31 @@ import Papa from 'papaparse';
 import { UploadCloud, FileSpreadsheet, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
 import './DataImport.css';
 
-// The strict columns you require
-const REQUIRED_COLUMNS = ['UT', 'TITLE', 'DOI', 'AU', 'PY'];
+// We now define what columns are "Valid Identifiers"
+const VALID_IDENTIFIERS = ['TITLE', 'DOI', 'PUBMEDID'];
 
-const DataImport = ({ onFileUpload }) => { // Assuming parent passes 'onFileUpload'
+const DataImport = ({ onFileUpload }) => { 
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [error, setError] = useState(null);
 
   // Helper: Validate Headers
   const validateHeaders = (headers) => {
-    const cleanHeaders = headers.map(h => h.toString().toUpperCase().trim());
-    const missing = REQUIRED_COLUMNS.filter(col => !cleanHeaders.includes(col));
-    return missing;
+    // 1. Normalize file headers to uppercase/trimmed
+    const cleanHeaders = headers.map(h => h ? h.toString().toUpperCase().trim() : "");
+    
+    // 2. Check if AT LEAST ONE valid identifier exists in the file
+    // We look for an intersection between cleanHeaders and VALID_IDENTIFIERS
+    const hasValidColumn = cleanHeaders.some(header => VALID_IDENTIFIERS.includes(header));
+    
+    return hasValidColumn;
   };
 
   const processFile = (file) => {
     setIsProcessing(true);
     setError(null);
 
-    // 1.5s Artificial Delay for the "Premium Loading" feel
+    // 1.5s Animation Delay
     setTimeout(() => {
       const reader = new FileReader();
       
@@ -33,7 +38,6 @@ const DataImport = ({ onFileUpload }) => { // Assuming parent passes 'onFileUplo
         let rows = [];
 
         try {
-          // Parse CSV or Excel
           if (file.name.toLowerCase().endsWith('.csv')) {
             const result = Papa.parse(data, { header: false, skipEmptyLines: true });
             rows = result.data;
@@ -43,24 +47,24 @@ const DataImport = ({ onFileUpload }) => { // Assuming parent passes 'onFileUplo
             rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1 });
           }
 
-          // Validation
           if (rows.length > 0) {
             const headers = rows[0];
-            const missing = validateHeaders(headers);
             
-            if (missing.length > 0) {
-              setError(`Missing columns: ${missing.join(', ')}`);
+            // --- UPDATED VALIDATION LOGIC ---
+            const isValid = validateHeaders(headers);
+            
+            if (!isValid) {
+              setError(`File must contain at least one of: TITLE, DOI, or PUBMEDID`);
               setIsProcessing(false);
               return;
             }
 
-            // Success State
+            // Success
             setIsProcessing(false);
             setIsSuccess(true);
             
-            // Wait 1s more to show the "Success Green Check" before navigating
             setTimeout(() => {
-               onFileUpload(rows); // Send data to parent
+               onFileUpload(rows); 
             }, 1000);
 
           } else {
@@ -81,7 +85,8 @@ const DataImport = ({ onFileUpload }) => { // Assuming parent passes 'onFileUplo
     }, 1500); 
   };
 
-const onDrop = (acceptedFiles) => {
+  // Removed useCallback to fix Netlify linting error
+  const onDrop = (acceptedFiles) => {
     if (acceptedFiles.length > 0) {
       processFile(acceptedFiles[0]);
     }
@@ -124,7 +129,7 @@ const onDrop = (acceptedFiles) => {
           </div>
         )}
 
-        {/* STATE 3: UPLOAD UI (Default) */}
+        {/* STATE 3: UPLOAD UI */}
         {!isProcessing && !isSuccess && (
           <div {...getRootProps()} className={`dropzone ${isDragActive ? 'active' : ''} ${error ? 'error-border' : ''}`}>
             <input {...getInputProps()} />
@@ -146,7 +151,8 @@ const onDrop = (acceptedFiles) => {
             
             <p className="sub-text">
               or drag and drop .XLSX or .CSV <br/>
-              <span className="req-text">(Required: UT, TITLE, DOI, AU, PY)</span>
+              {/* UPDATED TEXT */}
+              <span className="req-text">(Required: TITLE, DOI, or PUBMEDID)</span>
             </p>
           </div>
         )}
