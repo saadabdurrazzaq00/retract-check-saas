@@ -3,7 +3,7 @@ import Papa from 'papaparse';
 import { 
   Play, ArrowLeft, FileText, Layout, 
   AlertTriangle, CheckCircle, TrendingUp, Users, 
-  Download, Database, ShieldAlert, Copy 
+  Download, Database, ShieldAlert, Copy, Activity, Info 
 } from 'lucide-react';
 import './DataPreview.css';
 
@@ -12,7 +12,7 @@ const DataPreview = ({ data, onBack }) => {
   const [progress, setProgress] = useState(0);
   const [processedData, setProcessedData] = useState(null);
 
-  // --- 1. MEMOIZED INPUT STATS ---
+  // --- 1. MEMOIZED INPUT STATS (Input View) ---
   const inputStats = useMemo(() => {
     if (!data || data.length === 0) return {};
     
@@ -22,28 +22,13 @@ const DataPreview = ({ data, onBack }) => {
     const headers = validData[0];
     const rows = validData.slice(1);
     
+    // Helper to find column index case-insensitively
     const getIndex = (name) => headers.findIndex(h => h && h.toString().toUpperCase().trim() === name);
     
-    // Stats Logic
-    const pyIndex = getIndex('PY');
-    const doiIndex = getIndex('DOI');
-    const auIndex = getIndex('AU');
     const titleIndex = getIndex('TITLE');
+    const doiIndex = getIndex('DOI');
 
-    let peakYear = "N/A";
-    if (pyIndex !== -1) {
-      const yearCounts = {};
-      rows.forEach(r => {
-        if (r[pyIndex]) {
-            const y = parseInt(r[pyIndex]);
-            if (!isNaN(y) && y > 1900 && y < 2100) yearCounts[y] = (yearCounts[y] || 0) + 1;
-        }
-      });
-      if (Object.keys(yearCounts).length > 0) {
-        peakYear = Object.keys(yearCounts).reduce((a, b) => yearCounts[a] > yearCounts[b] ? a : b);
-      }
-    }
-
+    // Calculate DOI Coverage
     let doiCount = 0;
     if (doiIndex !== -1) {
         doiCount = rows.filter(r => r[doiIndex] && r[doiIndex].toString().trim().length > 5).length;
@@ -51,30 +36,72 @@ const DataPreview = ({ data, onBack }) => {
     const totalRows = rows.length;
     const doiCoverage = totalRows > 0 ? Math.round((doiCount / totalRows) * 100) + '%' : '0%';
 
-    let uniqueAuthors = 0;
-    if (auIndex !== -1) {
-      uniqueAuthors = new Set(rows.map(r => r[auIndex]).filter(Boolean)).size;
-    }
-
+    // Calculate Duplicates
     let duplicateTitles = 0;
     if (titleIndex !== -1) {
       const titles = rows.map(r => r[titleIndex] ? r[titleIndex].toString().toLowerCase().trim() : "");
       duplicateTitles = titles.length - new Set(titles).size;
     }
 
-    return { totalRows, totalCols: headers.length, doiCoverage, peakYear, uniqueAuthors, duplicateTitles, headers, rows };
+    return { totalRows, totalCols: headers.length, doiCoverage, duplicateTitles, headers, rows };
   }, [data]);
 
-  // --- 2. AUTOMATION LOGIC (WITH FALLBACK SYSTEM) ---
+  // --- 2. BIBLIOMETRIC HELPERS ---
+
+  // Analyze the "Reason" text to determine severity
+  const analyzeSeverity = (reason) => {
+    if (!reason) return { label: "Unknown", color: "gray" };
+    const lower = reason.toLowerCase();
+    
+    // High Severity: Fraud, Manipulation, Falsification
+    if (lower.includes('falsification') || lower.includes('fabrication') || lower.includes('misconduct') || lower.includes('manipulation') || lower.includes('ethical')) {
+      return { label: "High: Misconduct", color: "#dc2626" }; // Red
+    }
+    // Medium Severity: Error, Reliable? 
+    if (lower.includes('error') || lower.includes('mistake') || lower.includes('data issue')) {
+      return { label: "Medium: Error", color: "#f59e0b" }; // Orange
+    }
+    // Low Severity: Duplicate, Copyright
+    if (lower.includes('duplicate') || lower.includes('copyright') || lower.includes('administrative')) {
+      return { label: "Low: Procedural", color: "#2563eb" }; // Blue
+    }
+    return { label: "Review Required", color: "#4b5563" };
+  };
+
+  // Calculate years between publication and retraction
+  const calculateLag = (pubDate, retDate) => {
+    if (!pubDate || !retDate) return "N/A";
+    try {
+        const p = new Date(pubDate);
+        const r = new Date(retDate);
+        if (isNaN(p) || isNaN(r)) return "N/A";
+        
+        const diffTime = Math.abs(r - p);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+        const years = (diffDays / 365).toFixed(1);
+        
+        return `${years} Years`;
+    } catch (e) { return "N/A"; }
+  };
+
+  // Helper to remove timestamps (e.g., "4/1/2010 0:00" -> "4/1/2010")
+  const cleanDate = (dateStr) => {
+    if (!dateStr) return "";
+    return dateStr.split(' ')[0]; 
+  };
+
+  // --- 3. CORE AUTOMATION LOGIC ---
   const handleStart = async () => {
     setViewState('processing');
     setProgress(0);
     
     try {
+      // Load the Retraction Watch Database
       const response = await fetch('/assets/retraction_watch.csv');
       if (!response.ok) throw new Error("Database file missing");
       const csvText = await response.text();
 
+      // Fake progress bar animation
       const progressInterval = setInterval(() => {
         setProgress(old => (old > 90 ? old : old + Math.floor(Math.random() * 10)));
       }, 200);
@@ -100,7 +127,6 @@ const DataPreview = ({ data, onBack }) => {
             }
             // 2. PubMedID Index (Secondary)
             if (item.OriginalPaperPubMedID) {
-              // Ensure strictly string comparison just in case
               pmidMap.set(item.OriginalPaperPubMedID.toString().trim(), item);
             }
             // 3. Title Index (Tertiary - Fallback)
@@ -109,23 +135,18 @@ const DataPreview = ({ data, onBack }) => {
             }
           });
 
-          // Input Helpers
+          // Helpers to read input file columns
           const inputHeaders = data[0].map(h => h ? h.toString().toUpperCase().trim() : "");
           const getVal = (row, colName) => {
             const index = inputHeaders.indexOf(colName);
             return index !== -1 && row[index] !== undefined ? row[index] : "";
           };
 
-          // Helper: Clean Date Function
-          const cleanDate = (dateStr) => {
-            if (!dateStr) return "";
-            return dateStr.split(' ')[0]; 
-          };
-
+          // Define Final Output Headers
           const outputHeaders = [
             "TITLE", "InputDOI", 
-            "RetractionStatus", 
-            "Subject", "Institution", "Journal", "Publisher", "Country", "Author", 
+            "RetractionStatus", "RiskSeverity", "RetractionLag", 
+            "Subject", "Journal", "Publisher", "Country", "Author", 
             "URLS", "ArticleType", 
             "OriginalPaperDate", "RetractionDate", 
             "OriginalPaperDOI", "RetractionDOI", 
@@ -144,23 +165,19 @@ const DataPreview = ({ data, onBack }) => {
             const cleanPmid = rawPmid ? rawPmid.toString().trim() : "";
             const cleanTitle = rawTitle ? rawTitle.toString().trim().toLowerCase() : "";
 
-            // --- THE FALLBACK MATCHING LOGIC ---
+            // --- WATERFALL MATCHING LOGIC ---
             let match = null;
+            if (cleanDoi) match = doiMap.get(cleanDoi);           // Step 1: DOI
+            if (!match && cleanPmid) match = pmidMap.get(cleanPmid); // Step 2: PMID
+            if (!match && cleanTitle) match = titleMap.get(cleanTitle); // Step 3: Title
 
-            // Step 1: Try DOI
-            if (cleanDoi) match = doiMap.get(cleanDoi);
+            // Default Empty State
+            let status = "Clean"; // Default to Clean instead of long text
+            let severity = { label: "-", color: "green" };
+            let lag = "-";
             
-            // Step 2: If no match, Try PubMedID
-            if (!match && cleanPmid) match = pmidMap.get(cleanPmid);
-
-            // Step 3: If no match, Try Title
-            if (!match && cleanTitle) match = titleMap.get(cleanTitle);
-
-
-            // --- Construct Output ---
-            let status = "No Retractions found matching selected criteria";
             let m = { 
-                Subject: "", Institution: "", Journal: "", Publisher: "", Country: "", 
+                Subject: "", Journal: "", Publisher: "", Country: "", 
                 Author: "", URLS: "", ArticleType: "", 
                 OriginalPaperDate: "", RetractionDate: "", 
                 OriginalPaperDOI: "", RetractionDOI: "", 
@@ -169,28 +186,36 @@ const DataPreview = ({ data, onBack }) => {
             };
 
             if (match) {
-              // Safety Check: Retraction != Original
+              // Safety: Ensure it's not a self-match (unlikely but good practice)
               const retDOI = match.RetractionDOI ? match.RetractionDOI.trim().toLowerCase() : "";
               const origDOI = match.OriginalPaperDOI ? match.OriginalPaperDOI.trim().toLowerCase() : "";
 
               if (retDOI !== origDOI) {
-                 status = "Retractions found matching selected criteria";
+                 status = "RETRACTED";
                  
+                 // Calculate Metrics
+                 severity = analyzeSeverity(match.Reason);
+                 lag = calculateLag(match.OriginalPaperDate, match.RetractionDate);
+
+                 // Populate Data
                  m = {
                     Subject: match.Subject || "", 
-                    Institution: match.Institution || "",
                     Journal: match.Journal || "", 
                     Publisher: match.Publisher || "",
                     Country: match.Country || "", 
                     Author: match.Author || "",
                     URLS: match.URLS || "", 
                     ArticleType: match.ArticleType || "",
+                    
+                    // Clean Dates
                     OriginalPaperDate: cleanDate(match.OriginalPaperDate),
                     RetractionDate: cleanDate(match.RetractionDate),
+                    
                     OriginalPaperDOI: match.OriginalPaperDOI || "",
                     RetractionDOI: match.RetractionDOI || "",
                     OriginalPaperPubMedID: match.OriginalPaperPubMedID || "",
                     RetractionPubMedID: match.RetractionPubMedID || "",
+                    
                     Reason: match.Reason || "", 
                     Paywalled: match.Paywalled || "",
                     Notes: match.Notes || ""
@@ -198,30 +223,36 @@ const DataPreview = ({ data, onBack }) => {
               }
             }
 
-            return [
-              rawTitle, // Return raw input title for reference
-              rawDoi, 
-              status,
-              m.Subject, m.Institution, m.Journal, m.Publisher, m.Country, 
-              m.Author, m.URLS, m.ArticleType,
-              m.OriginalPaperDate, m.RetractionDate,
-              m.OriginalPaperDOI, m.RetractionDOI,
-              m.OriginalPaperPubMedID, m.RetractionPubMedID,
-              m.Reason, m.Paywalled, m.Notes
-            ];
+            // Return Data Object
+            return {
+              row: [
+                rawTitle, rawDoi, 
+                status, severity.label, lag,
+                m.Subject, m.Journal, m.Publisher, m.Country, m.Author, m.URLS, m.ArticleType,
+                m.OriginalPaperDate, m.RetractionDate,
+                m.OriginalPaperDOI, m.RetractionDOI,
+                m.OriginalPaperPubMedID, m.RetractionPubMedID,
+                m.Reason, m.Paywalled, m.Notes
+              ],
+              meta: { status, severity } // Meta for stats counting
+            };
           });
 
           // --- STATS CALCULATION ---
-          const foundCount = outputRows.filter(r => r[2] && r[2].startsWith("Retractions found")).length;
-          
-          const titles = outputRows.map(r => r[0] ? r[0].toString().toLowerCase().trim() : "");
+          const rowsOnly = outputRows.map(r => r.row);
+          const foundCount = outputRows.filter(r => r.meta.status === "RETRACTED").length;
+          const misconductCount = outputRows.filter(r => r.meta.severity.label.includes("Misconduct")).length;
+
+          // Duplicate Title Check in Output
+          const titles = outputRows.map(r => r.row[0] ? r.row[0].toString().toLowerCase().trim() : "");
           const duplicateTitles = titles.length - new Set(titles).size;
 
           setProcessedData({
             headers: outputHeaders,
-            rows: outputRows,
+            rows: rowsOnly,
             foundCount,
-            totalRows: outputRows.length,
+            misconductCount,
+            totalRows: rowsOnly.length,
             duplicateTitles
           });
 
@@ -245,7 +276,7 @@ const DataPreview = ({ data, onBack }) => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.setAttribute("download", "Final_Retraction_Results.csv");
+    link.setAttribute("download", "Bibliometric_Audit_Report.csv");
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -259,11 +290,11 @@ const DataPreview = ({ data, onBack }) => {
           <div className="scan-line"></div>
           <Database size={64} className="db-icon" />
         </div>
-        <h2>Cross-Referencing Database</h2>
+        <h2>Analyzing Bibliometrics</h2>
         <div className="progress-bar-wrapper">
             <div className="progress-bar-fill" style={{ width: `${progress}%` }}></div>
         </div>
-        <p className="processing-status">Checking papers (DOI → PMID → Title)...</p>
+        <p className="processing-status">Calculating retraction lag and severity scores...</p>
       </div>
     );
   }
@@ -279,16 +310,15 @@ const DataPreview = ({ data, onBack }) => {
            </div>
            <div className="header-right">
               <button className="secondary-btn" onClick={() => setViewState('input')}><ArrowLeft size={16} /> New Search</button>
-              <button className="download-btn" onClick={handleDownload}><Download size={16} /> Download CSV</button>
+              <button className="download-btn" onClick={handleDownload}><Download size={16} /> Download Report</button>
            </div>
         </div>
 
-        {/* RESULTS STATS GRID */}
+        {/* STATS GRID */}
         <div className="results-stats-grid">
            <div className="stat-card group">
               <div className="icon-box blue"><FileText size={20} /></div>
-              <div><h3>{processedData.totalRows}</h3><p>Total Checked</p></div>
-              <div className="tooltip">Total number of papers processed.</div>
+              <div><h3>{processedData.totalRows}</h3><p>Papers Audited</p></div>
            </div>
            
            <div className={`stat-card group ${processedData.foundCount > 0 ? 'alert-card' : 'clean-card'}`}>
@@ -301,25 +331,60 @@ const DataPreview = ({ data, onBack }) => {
                  </h3>
                  <p>Retractions Found</p>
               </div>
-              <div className="tooltip">Papers flagged as retracted.</div>
            </div>
 
            <div className="stat-card group">
-              <div className="icon-box purple"><Copy size={20} /></div>
-              <div><h3>{processedData.duplicateTitles}</h3><p>Duplicates</p></div>
-              <div className="tooltip">Papers appearing more than once.</div>
+              <div className="icon-box orange"><Activity size={20} /></div>
+              <div><h3>{processedData.misconductCount}</h3><p>Misconduct Cases</p></div>
+              <div className="tooltip">Confirmed Fraud/Falsification.</div>
            </div>
         </div>
 
+        {/* LEGEND SECTION */}
+        <div className="legend-container">
+           <div className="legend-title">
+             <Info size={16} />
+             <h4>Understanding Your Risk Score</h4>
+           </div>
+           <div className="legend-grid">
+             <div className="legend-item">
+               <span className="badge badge-red">High: Misconduct</span>
+               <p><strong>Fraud & Unethical:</strong> Falsification, Fabrication, or Manipulation. Immediate removal recommended.</p>
+             </div>
+             <div className="legend-item">
+               <span className="badge badge-orange">Medium: Error</span>
+               <p><strong>Data Issues:</strong> Honest calculation errors or inconsistent data. Results likely invalid.</p>
+             </div>
+             <div className="legend-item">
+               <span className="badge badge-blue">Low: Procedural</span>
+               <p><strong>Admin Issues:</strong> Duplicate publication or Copyright issues. Content may still be valid.</p>
+             </div>
+             <div className="legend-item">
+               <span className="metric-label">Retraction Lag</span>
+               <p><strong>Time Gap:</strong> Years between Publication and Retraction. Longer lag = Higher risk.</p>
+             </div>
+           </div>
+        </div>
+
+        {/* RESULTS TABLE */}
         <div className="results-table-wrapper">
            <table className="results-table">
               <thead><tr>{processedData.headers.map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
               <tbody>
                  {processedData.rows.slice(0, 100).map((row, rIdx) => {
-                    const isRetracted = row[2] && row[2].startsWith("Retractions found");
+                    const isRetracted = row[2] === "RETRACTED";
                     return (
-                        <tr key={rIdx} className={isRetracted ? "retracted-row" : "clean-row"} style={{animationDelay: `${rIdx * 0.03}s`}}>
-                            {row.map((cell, cIdx) => <td key={cIdx}>{cell}</td>)}
+                        <tr key={rIdx} className={isRetracted ? "retracted-row" : "clean-row"}>
+                            {row.map((cell, cIdx) => (
+                                <td key={cIdx}>
+                                    {/* Render Badge for Severity Column (Index 3) */}
+                                    {cIdx === 3 && isRetracted ? (
+                                        <span className={`badge ${cell.includes("High") ? "badge-red" : cell.includes("Medium") ? "badge-orange" : "badge-blue"}`}>
+                                            {cell.split(':')[0]}
+                                        </span>
+                                    ) : cell}
+                                </td>
+                            ))}
                         </tr>
                     )
                  })}
@@ -337,7 +402,7 @@ const DataPreview = ({ data, onBack }) => {
       <div className="preview-header">
         <button onClick={onBack} className="back-btn"><ArrowLeft size={18} /> Back</button>
         <h2>Input Overview</h2>
-        <button className="start-btn" onClick={handleStart}><Play size={18} /> Start Automation</button>
+        <button className="start-btn" onClick={handleStart}><Play size={18} /> Run Analysis</button>
       </div>
 
       <div className="stats-grid">
@@ -355,16 +420,6 @@ const DataPreview = ({ data, onBack }) => {
             <div className="icon-box teal"><CheckCircle size={20} /></div>
             <div><h3>{inputStats.doiCoverage || '0%'}</h3><p>DOI Coverage</p></div>
             <div className="tooltip">% of papers containing a valid DOI.</div>
-         </div>
-         <div className="stat-card group">
-            <div className="icon-box orange"><TrendingUp size={20} /></div>
-            <div><h3>{inputStats.peakYear || 'N/A'}</h3><p>Peak Year</p></div>
-            <div className="tooltip">Hottest year for research.</div>
-         </div>
-         <div className="stat-card group">
-            <div className="icon-box indigo"><Users size={20} /></div>
-            <div><h3>{inputStats.uniqueAuthors || 0}</h3><p>Unique Authors</p></div>
-            <div className="tooltip">Count of distinct author names.</div>
          </div>
          <div className="stat-card group">
             <div className="icon-box red"><AlertTriangle size={20} /></div>
