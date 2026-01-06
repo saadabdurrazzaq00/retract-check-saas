@@ -68,20 +68,27 @@ const DataPreview = ({ data, onBack }) => {
     return { label: "Review Required", color: "#4b5563" };
   };
 
-  // Calculate years between publication and retraction
-  const calculateLag = (pubDate, retDate) => {
-    if (!pubDate || !retDate) return "N/A";
+  // --- UPDATED: Calculate Lag in Years, Months, and Days ---
+  const calculateLagMetrics = (pubDate, retDate) => {
+    if (!pubDate || !retDate) return { years: "N/A", months: "N/A", days: "N/A" };
     try {
         const p = new Date(pubDate);
         const r = new Date(retDate);
-        if (isNaN(p) || isNaN(r)) return "N/A";
+        if (isNaN(p) || isNaN(r)) return { years: "N/A", months: "N/A", days: "N/A" };
         
-        const diffTime = Math.abs(r - p);
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-        const years = (diffDays / 365).toFixed(1);
+        const diffTime = r - p;
+        // Use Math.abs in case dates are flipped in DB (rare but safe)
+        const totalDays = Math.ceil(Math.abs(diffTime) / (1000 * 60 * 60 * 24)); 
         
-        return `${years} Years`;
-    } catch (e) { return "N/A"; }
+        const totalMonths = (totalDays / 30.44).toFixed(1); // Avg days in month
+        const totalYears = (totalDays / 365.25).toFixed(2); // Avg days in year
+
+        return { 
+            years: `${totalYears} Years`, 
+            months: `${totalMonths} Months`, 
+            days: `${totalDays} Days` 
+        };
+    } catch (e) { return { years: "N/A", months: "N/A", days: "N/A" }; }
   };
 
   // Helper to remove timestamps (e.g., "4/1/2010 0:00" -> "4/1/2010")
@@ -142,10 +149,11 @@ const DataPreview = ({ data, onBack }) => {
             return index !== -1 && row[index] !== undefined ? row[index] : "";
           };
 
-          // Define Final Output Headers
+          // --- DEFINE FINAL OUTPUT HEADERS (Expanded) ---
           const outputHeaders = [
-            "TITLE", "InputDOI", "Input_Pubmed_ID",
-            "RetractionStatus", "RiskSeverity", "RetractionLag", 
+            "TITLE", "InputDOI", "Input_Pubmed_ID", // Added Input_Pubmed_ID
+            "RetractionStatus", "RiskSeverity", 
+            "Lag_Years", "Lag_Months", "Lag_Days",  // Added Lags
             "Subject", "Journal", "Publisher", "Country", "Author", 
             "URLS", "ArticleType", 
             "OriginalPaperDate", "RetractionDate", 
@@ -155,7 +163,7 @@ const DataPreview = ({ data, onBack }) => {
           ];
 
           const outputRows = data.slice(1).map(row => {
-            // Grab Input Values
+            // Grab Input Values (with smart fallback for PMID)
             const rawDoi = getVal(row, "DOI");
             const rawPmid = getVal(row, "PUBMEDID") || getVal(row, "PMID") || getVal(row, "PUBMED_ID");
             const rawTitle = getVal(row, "TITLE");
@@ -172,9 +180,9 @@ const DataPreview = ({ data, onBack }) => {
             if (!match && cleanTitle) match = titleMap.get(cleanTitle); // Step 3: Title
 
             // Default Empty State
-            let status = "Clean"; // Default to Clean instead of long text
+            let status = "Clean";
             let severity = { label: "-", color: "green" };
-            let lag = "-";
+            let lagStats = { years: "-", months: "-", days: "-" };
             
             let m = { 
                 Subject: "", Journal: "", Publisher: "", Country: "", 
@@ -195,7 +203,7 @@ const DataPreview = ({ data, onBack }) => {
                  
                  // Calculate Metrics
                  severity = analyzeSeverity(match.Reason);
-                 lag = calculateLag(match.OriginalPaperDate, match.RetractionDate);
+                 lagStats = calculateLagMetrics(match.OriginalPaperDate, match.RetractionDate);
 
                  // Populate Data
                  m = {
@@ -206,16 +214,12 @@ const DataPreview = ({ data, onBack }) => {
                     Author: match.Author || "",
                     URLS: match.URLS || "", 
                     ArticleType: match.ArticleType || "",
-                    
-                    // Clean Dates
                     OriginalPaperDate: cleanDate(match.OriginalPaperDate),
                     RetractionDate: cleanDate(match.RetractionDate),
-                    
                     OriginalPaperDOI: match.OriginalPaperDOI || "",
                     RetractionDOI: match.RetractionDOI || "",
                     OriginalPaperPubMedID: match.OriginalPaperPubMedID || "",
                     RetractionPubMedID: match.RetractionPubMedID || "",
-                    
                     Reason: match.Reason || "", 
                     Paywalled: match.Paywalled || "",
                     Notes: match.Notes || ""
@@ -226,8 +230,9 @@ const DataPreview = ({ data, onBack }) => {
             // Return Data Object
             return {
               row: [
-                rawTitle, rawDoi, rawPmid,
-                status, severity.label, lag,
+                rawTitle, rawDoi, rawPmid, // Added rawPmid to Output
+                status, severity.label, 
+                lagStats.years, lagStats.months, lagStats.days, // Added Metrics
                 m.Subject, m.Journal, m.Publisher, m.Country, m.Author, m.URLS, m.ArticleType,
                 m.OriginalPaperDate, m.RetractionDate,
                 m.OriginalPaperDOI, m.RetractionDOI,
@@ -372,13 +377,14 @@ const DataPreview = ({ data, onBack }) => {
               <thead><tr>{processedData.headers.map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
               <tbody>
                  {processedData.rows.slice(0, 100).map((row, rIdx) => {
-                    const isRetracted = row[2] === "RETRACTED";
+                    // Check Index 3 for Status (Updated for new column structure)
+                    const isRetracted = row[3] === "RETRACTED";
                     return (
                         <tr key={rIdx} className={isRetracted ? "retracted-row" : "clean-row"}>
                             {row.map((cell, cIdx) => (
                                 <td key={cIdx}>
-                                    {/* Render Badge for Severity Column (Index 3) */}
-                                    {cIdx === 3 && isRetracted ? (
+                                    {/* Check Index 4 for Severity Badge */}
+                                    {cIdx === 4 && isRetracted ? (
                                         <span className={`badge ${cell.includes("High") ? "badge-red" : cell.includes("Medium") ? "badge-orange" : "badge-blue"}`}>
                                             {cell.split(':')[0]}
                                         </span>
