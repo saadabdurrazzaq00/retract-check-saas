@@ -144,7 +144,7 @@ const DataPreview = ({ data, onBack }) => {
 
           // Define Final Output Headers
           const outputHeaders = [
-            "TITLE", "InputDOI", 
+            "TITLE", "InputDOI", "Input_Pubmed_ID",
             "RetractionStatus", "RiskSeverity", "RetractionLag", 
             "Subject", "Journal", "Publisher", "Country", "Author", 
             "URLS", "ArticleType", 
@@ -226,7 +226,7 @@ const DataPreview = ({ data, onBack }) => {
             // Return Data Object
             return {
               row: [
-                rawTitle, rawDoi, 
+                rawTitle, rawDoi, rawPmid,
                 status, severity.label, lag,
                 m.Subject, m.Journal, m.Publisher, m.Country, m.Author, m.URLS, m.ArticleType,
                 m.OriginalPaperDate, m.RetractionDate,
