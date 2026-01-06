@@ -19,8 +19,8 @@ const DataImport = ({ onFileUpload }) => {
 
   // Helper: Validate Headers
   const validateHeaders = (headers) => {
-    const cleanHeaders = headers.map(h => h ? h.toString().toUpperCase().trim() : "");
-    return cleanHeaders.some(header => VALID_IDENTIFIERS.includes(header));
+    // Check intersection with valid identifiers
+    return headers.some(h => VALID_IDENTIFIERS.includes(h));
   };
 
   const processFile = (file) => {
@@ -35,25 +35,46 @@ const DataImport = ({ onFileUpload }) => {
         let finalData = [];
 
         try {
-          // --- CSV HANDLING (Single Sheet by definition) ---
+          // --- CSV HANDLING ---
           if (file.name.toLowerCase().endsWith('.csv')) {
-            const result = Papa.parse(data, { header: false, skipEmptyLines: true });
-            finalData = result.data;
+            // PapaParse automatically handles arrays
+            const result = Papa.parse(data, { 
+                header: false, 
+                skipEmptyLines: true 
+            });
+            
+            // Normalize CSV Headers (Row 0)
+            if (result.data && result.data.length > 0) {
+                const headers = result.data[0].map(h => h.toString().toUpperCase().trim());
+                finalData = [headers, ...result.data.slice(1)];
+            }
           } 
-          // --- EXCEL HANDLING (Multi-Sheet Logic) ---
+          // --- EXCEL HANDLING (MULTI-SHEET MERGE) ---
           else {
             const workbook = XLSX.read(data, { type: 'binary' });
             
             // 1. Gather ALL records from ALL sheets
             let allRecords = [];
+            
             workbook.SheetNames.forEach(sheetName => {
+              // Get raw JSON objects
               const sheetData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
-              allRecords = allRecords.concat(sheetData);
+              
+              // Normalize Keys immediately (Uppercase + Trim) to ensure matching
+              const normalizedData = sheetData.map(row => {
+                  const newRow = {};
+                  Object.keys(row).forEach(key => {
+                      const cleanKey = key.toString().toUpperCase().trim();
+                      newRow[cleanKey] = row[key];
+                  });
+                  return newRow;
+              });
+
+              allRecords = allRecords.concat(normalizedData);
             });
 
             if (allRecords.length > 0) {
-              // 2. Find ALL unique headers (Superset of columns)
-              // This handles cases where Sheet 1 has "DOI" and Sheet 2 has "PMID"
+              // 2. Find ALL unique headers across all sheets
               const uniqueHeaders = new Set();
               allRecords.forEach(row => {
                 Object.keys(row).forEach(key => uniqueHeaders.add(key));
@@ -61,9 +82,10 @@ const DataImport = ({ onFileUpload }) => {
               
               const headerRow = Array.from(uniqueHeaders);
 
-              // 3. Map records to arrays based on the master header row
+              // 3. Map records to arrays based on the Master Header Row
+              // This fills in "gaps" with empty strings
               const bodyRows = allRecords.map(record => {
-                return headerRow.map(header => record[header] || ""); // Fill missing cols with empty string
+                return headerRow.map(header => (record[header] !== undefined ? record[header] : ""));
               });
 
               // 4. Combine Header + Body
