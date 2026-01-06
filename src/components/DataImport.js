@@ -1,12 +1,12 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
-import { UploadCloud, FileSpreadsheet, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
+import { UploadCloud, FileSpreadsheet, Loader2, AlertCircle, CheckCircle, Info } from 'lucide-react';
 import './DataImport.css';
 
 // We now define what columns are "Valid Identifiers"
-const VALID_IDENTIFIERS = ['TITLE', 'DOI', 'PUBMEDID'];
+const VALID_IDENTIFIERS = ['TITLE', 'DOI', 'PUBMEDID', 'PMID', 'PUBMED_ID'];
 
 const DataImport = ({ onFileUpload }) => { 
   const [isProcessing, setIsProcessing] = useState(false);
@@ -54,7 +54,7 @@ const DataImport = ({ onFileUpload }) => {
             const isValid = validateHeaders(headers);
             
             if (!isValid) {
-              setError(`File must contain at least one of: TITLE, DOI, or PUBMEDID`);
+              setError(`Missing required columns! File must contain at least one of: "DOI", "PMID", or "TITLE"`);
               setIsProcessing(false);
               return;
             }
@@ -64,7 +64,7 @@ const DataImport = ({ onFileUpload }) => {
             setIsSuccess(true);
             
             setTimeout(() => {
-               onFileUpload(rows); 
+                onFileUpload(rows); 
             }, 1000);
 
           } else {
@@ -85,7 +85,6 @@ const DataImport = ({ onFileUpload }) => {
     }, 1500); 
   };
 
-  // Removed useCallback to fix Netlify linting error
   const onDrop = (acceptedFiles) => {
     if (acceptedFiles.length > 0) {
       processFile(acceptedFiles[0]);
@@ -150,10 +149,24 @@ const DataImport = ({ onFileUpload }) => {
             <button className="upload-btn">Click to upload</button>
             
             <p className="sub-text">
-              or drag and drop .XLSX or .CSV <br/>
-              {/* UPDATED TEXT */}
-              <span className="req-text">(Required: TITLE, DOI, or PUBMEDID)</span>
+              Supports .XLSX or .CSV files
             </p>
+
+            {/* --- NEW FORMAT GUIDE SECTION --- */}
+            <div className="format-guide">
+               <Info size={14} className="info-icon"/>
+               <div className="guide-text">
+                  <strong>Required Columns (Case Insensitive):</strong>
+                  <ul>
+                      <li><code>DOI</code> or <code>DOI Link</code></li>
+                      <li><code>PMID</code> or <code>PUBMEDID</code></li>
+                      <li><code>TITLE</code> or <code>Article Title</code></li>
+                  </ul>
+                  <span>(You only need at least one to proceed)</span>
+               </div>
+            </div>
+            {/* -------------------------------- */}
+
           </div>
         )}
 
