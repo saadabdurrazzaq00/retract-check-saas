@@ -157,7 +157,7 @@ const DataPreview = ({ data, onBack }) => {
           const outputRows = data.slice(1).map(row => {
             // Grab Input Values
             const rawDoi = getVal(row, "DOI");
-            const rawPmid = getVal(row, "PUBMEDID");
+            const rawPmid = getVal(row, "PUBMEDID") || getVal(row, "PMID") || getVal(row, "PUBMED_ID");
             const rawTitle = getVal(row, "TITLE");
 
             // Normalize Inputs
